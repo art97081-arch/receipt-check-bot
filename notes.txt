@@ -1,0 +1,5 @@
+Owner TG ID (from user): 6781252224
+Datagrab key (from user): dfnh4fsk33ysf
+Bot token (from user): 8487958575:AAHf5mzG0nwwVDRLac__jTcog-OO2G9v29E
+
+Security: Do not commit .env with real values. Use .env and .gitignore to prevent commits.
