@@ -2,6 +2,7 @@ import os
 import logging
 import tempfile
 import requests
+import datetime
 from dotenv import load_dotenv
 from telegram import Update, File
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -142,7 +143,6 @@ def format_datagrab_response(data: dict) -> str:
         # Дата/время
         payment_time = check_data.get('payment_time')
         if payment_time:
-            import datetime
             try:
                 dt = datetime.datetime.fromtimestamp(payment_time)
                 date_str = dt.strftime('%d.%m.%Y %H:%M:%S')
