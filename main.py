@@ -3,10 +3,14 @@ import logging
 import tempfile
 import requests
 import datetime
+from urllib3.exceptions import InsecureRequestWarning
 from dotenv import load_dotenv
 from telegram import Update, File
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from db import init_db, add_allowed, remove_allowed, list_allowed, is_allowed, get_owner
+
+# Suppress SSL warnings for Railway environment
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 load_dotenv()
 
@@ -263,7 +267,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     with open(file_path, 'rb') as f:
                         files = {'file': ('receipt.pdf', f, 'application/pdf')}
-                        resp = requests.post(url, files=files, timeout=60)
+                        resp = requests.post(url, files=files, timeout=60, verify=False)
                     resp.raise_for_status()
                     # Try parsing JSON; if parsing fails, send the raw response back to the user for inspection
                     try:
