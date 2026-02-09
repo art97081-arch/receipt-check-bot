@@ -29,15 +29,13 @@ def format_datagrab_response(data: dict) -> str:
     lines = []
     result = data.get('result')
 
-    # High-level result
-    if result in (None, ''):
-        lines.append('Результат: неизвестен')
-    else:
-        lines.append(f'Результат: {result}')
-
-    # message from API (friendly)
-    if data.get('message'):
-        lines.append(data.get('message'))
+    # High-level result and message
+    if result:
+        lines.append(f'📋 Результат: {result}')
+    
+    message = data.get('message', '')
+    if message:
+        lines.append(f'💬 {message}')
 
     # Flags
     is_fake = data.get('is_fake')
@@ -45,58 +43,104 @@ def format_datagrab_response(data: dict) -> str:
     is_unrec = data.get('is_unrec')
     compliance = data.get('compliance_status')
 
-    # Interpret authenticity
+    # Main verdict
+    lines.append('')
     if is_fake:
-        lines.append('\n❌ Оригинальность: Не подтверждена')
-        lines.append('❌ Чек не является оригиналом — документ был изменен или пересоздан')
+        lines.append('❌ ВЕРДИКТ: ЧЕК ПОДДЕЛЬНЫЙ')
+        lines.append('Документ был изменен или пересоздан')
     elif is_unrec:
-        lines.append('\n⚠️ Распознавание: Не удалось распознать чек (unrec)')
+        lines.append('⚠️ ВЕРДИКТ: РАСПОЗНАВАНИЕ НЕ УДАЛОСЬ')
+        lines.append('Чек не распознан системой (unrec)')
     else:
-        lines.append('\n✅ Оригинальность: Подтверждена')
+        lines.append('✅ ВЕРДИКТ: ЧЕК ОРИГИНАЛЬНЫЙ')
 
     # Structure / compliance
+    lines.append('')
     if compliance is False:
         lines.append('❌ Структура PDF: Нарушена')
     elif compliance is True:
         lines.append('✅ Структура PDF: Корректна')
 
     if is_mod:
-        lines.append('⚠️ Чек был пересохранён/сформирован виртуальным принтером (mod) — проверка ограничена')
+        lines.append('⚠️ Чек был пересохранён через виртуальный принтер')
 
-    # If check_data exists, print main fields
-    check_data = data.get('check_data')
-    if isinstance(check_data, dict):
-        lines.append('\n🧾 Данные чека:')
-        sender = check_data.get('sender_name') or check_data.get('sender') or check_data.get('sender_acc')
-        if sender:
-            lines.append(f'  Отправитель: {sender}')
-        sender_bank = check_data.get('sender_bank') or check_data.get('bank_sender')
-        if sender_bank:
-            lines.append(f'  Банк отправителя: {sender_bank}')
-        remitte = check_data.get('remitte_name') or check_data.get('recipient')
-        if remitte:
-            lines.append(f'  Получатель: {remitte}')
-        remitte_bank = check_data.get('remitte_bank') or check_data.get('bank_recipient')
-        if remitte_bank:
-            lines.append(f'  Банк получателя: {remitte_bank}')
-        amount = check_data.get('amount') or check_data.get('sum') or check_data.get('payment_sum')
-        if amount:
-            lines.append(f'  Сумма: {amount}')
-        status = check_data.get('status') or check_data.get('state')
+    # Check data
+    check_data = data.get('check_data', {})
+    if isinstance(check_data, dict) and check_data:
+        lines.append('')
+        lines.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        lines.append('🧾 ДАННЫЕ ЧЕКА')
+        lines.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        
+        # Отправитель
+        sender_name = check_data.get('sender_name')
+        sender_acc = check_data.get('sender_acc')
+        if sender_name or sender_acc:
+            lines.append('📤 ОТПРАВИТЕЛЬ:')
+            if sender_name:
+                lines.append(f'   Имя: {sender_name}')
+            if sender_acc:
+                lines.append(f'   Счет: {sender_acc}')
+        
+        # Получатель
+        remitte_name = check_data.get('remitte_name')
+        remitte_acc = check_data.get('remitte_acc')
+        remitte_tel = check_data.get('remitte_tel')
+        if remitte_name or remitte_acc or remitte_tel:
+            lines.append('📥 ПОЛУЧАТЕЛЬ:')
+            if remitte_name:
+                lines.append(f'   Имя: {remitte_name}')
+            if remitte_acc:
+                lines.append(f'   Счет: {remitte_acc}')
+            if remitte_tel:
+                lines.append(f'   Телефон: {remitte_tel}')
+        
+        # Сумма
+        sum_val = check_data.get('sum')
+        if sum_val:
+            lines.append(f'💰 Сумма: {sum_val} ₽')
+        
+        # Статус платежа
+        status = check_data.get('status')
         if status:
-            lines.append(f'  Статус: {status}')
-        time = check_data.get('payment_time') or check_data.get('time')
-        if time:
-            lines.append(f'  Дата: {time}')
+            lines.append(f'✓ Статус: {status}')
+        
+        # Дата/время
+        payment_time = check_data.get('payment_time')
+        if payment_time:
+            import datetime
+            try:
+                dt = datetime.datetime.fromtimestamp(payment_time)
+                date_str = dt.strftime('%d.%m.%Y %H:%M:%S')
+                lines.append(f'🕐 Дата платежа: {date_str}')
+            except:
+                lines.append(f'🕐 Дата платежа (timestamp): {payment_time}')
+        
+        # Другие поля
+        doc_id = check_data.get('doc_id')
+        if doc_id:
+            lines.append(f'📌 ID документа: {doc_id}')
 
-    # Additional recommendation based on flags
+    # Дополнительная информация
+    lines.append('')
+    lines.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    
+    paid_until = data.get('paid_until')
+    if paid_until:
+        lines.append(f'💳 Подписка активна до: {paid_until}')
+    
+    last_checks = data.get('last_checks')
+    if last_checks is not None:
+        lines.append(f'📊 Проверок ранее: {last_checks}')
+
+    # Финальная рекомендация
     lines.append('')
     if is_fake:
-        lines.append('Чек поддельный — рекомендуется отклонить.')
-    elif is_unrec or (not compliance and compliance is not None):
-        lines.append('Рекомендация: Проверить вручную — частично распознан или структура нарушена.')
+        lines.append('⛔ РЕКОМЕНДАЦИЯ: ОТКЛОНИТЬ ЧЕК')
+    elif is_unrec:
+        lines.append('⚠️ РЕКОМЕНДАЦИЯ: ПРОВЕРИТЬ ВРУЧНУЮ (чек не распознан)')
     else:
-        lines.append('Рекомендация: Чек можно принять — все проверки пройдены.')
+        lines.append('✅ РЕКОМЕНДАЦИЯ: ЧЕК ПРИНЯТ')
 
     return '\n'.join(lines)
 
@@ -207,16 +251,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text('Не удалось получить ответ от DataGrab после попыток обоих серверов.')
                 return
             
-            # Format a human-friendly summary and send + raw JSON
+            # Format a human-friendly summary and send
             summary = format_datagrab_response(data)
             await update.message.reply_text(summary)
-
-            # send raw JSON (trim if large)
-            import json
-            raw = json.dumps(data, ensure_ascii=False, indent=2)
-            if len(raw) > 3900:
-                raw = raw[:3900] + '\n... (truncated)'
-            await update.message.reply_text(f'Полный ответ:\n<pre>{raw}</pre>', parse_mode='HTML')
         
         except Exception as e:
             logger.exception('Error during DataGrab API request')
