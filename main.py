@@ -48,21 +48,55 @@ def format_datagrab_response(data: dict) -> str:
     if is_fake:
         lines.append('❌ ВЕРДИКТ: ЧЕК ПОДДЕЛЬНЫЙ')
         lines.append('Документ был изменен или пересоздан')
+        lines.append('')
+        lines.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        lines.append('⚠️ ОБНАРУЖЕННЫЕ НАРУШЕНИЯ:')
+        lines.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        lines.append('❌ Чек не является оригиналом')
+        lines.append('   └─ Подлинность не подтверждена')
+        lines.append('   └─ Документ был изменен или пересоздан')
+        
+        # Добавляем детали структуры если нарушена
+        if compliance is False:
+            lines.append('❌ Структура PDF нарушена')
+            lines.append('   └─ Файл не прошел проверку целостности')
+            struct_result = data.get('struct_result')
+            if struct_result:
+                lines.append(f'   └─ Результат структуры: {struct_result}')
+        
+        if is_mod:
+            lines.append('❌ Чек был пересохранён')
+            lines.append('   └─ Сформирован виртуальным принтером')
+            lines.append('   └─ Проверка надежности затруднена')
+            
     elif is_unrec:
         lines.append('⚠️ ВЕРДИКТ: РАСПОЗНАВАНИЕ НЕ УДАЛОСЬ')
-        lines.append('Чек не распознан системой (unrec)')
+        lines.append('Чек не распознан системой')
+        lines.append('')
+        lines.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        lines.append('⚠️ ВОЗМОЖНЫЕ ПРОБЛЕМЫ:')
+        lines.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        lines.append('⚠️ Чек не распознан (unrec)')
+        lines.append('   └─ Система не смогла определить тип документа')
+        lines.append('   └─ Возможно, чек от неподдерживаемого банка')
+        lines.append('   └─ Или файл повреждён')
+        
     else:
         lines.append('✅ ВЕРДИКТ: ЧЕК ОРИГИНАЛЬНЫЙ')
+        
+        # Если есть структурные ошибки даже при оригинальности
+        if compliance is False:
+            lines.append('⚠️ Структура PDF: Нарушена (но содержимое оригинальное)')
+            struct_result = data.get('struct_result')
+            if struct_result:
+                lines.append(f'   └─ Результат структуры: {struct_result}')
+        elif compliance is True:
+            lines.append('✅ Структура PDF: Корректна')
 
-    # Structure / compliance
-    lines.append('')
-    if compliance is False:
-        lines.append('❌ Структура PDF: Нарушена')
-    elif compliance is True:
-        lines.append('✅ Структура PDF: Корректна')
-
-    if is_mod:
-        lines.append('⚠️ Чек был пересохранён через виртуальный принтер')
+    # Дополнительные детали для is_mod
+    if is_mod and not is_fake:
+        lines.append('⚠️ Внимание: Чек был пересохранён')
+        lines.append('   └─ Сформирован виртуальным принтером')
 
     # Check data
     check_data = data.get('check_data', {})
@@ -137,10 +171,13 @@ def format_datagrab_response(data: dict) -> str:
     lines.append('')
     if is_fake:
         lines.append('⛔ РЕКОМЕНДАЦИЯ: ОТКЛОНИТЬ ЧЕК')
+        lines.append('⛔ Чек является поддельным и не должен приниматься')
     elif is_unrec:
-        lines.append('⚠️ РЕКОМЕНДАЦИЯ: ПРОВЕРИТЬ ВРУЧНУЮ (чек не распознан)')
+        lines.append('⚠️ РЕКОМЕНДАЦИЯ: ПРОВЕРИТЬ ВРУЧНУЮ')
+        lines.append('⚠️ Чек не распознан, требуется ручная верификация')
     else:
         lines.append('✅ РЕКОМЕНДАЦИЯ: ЧЕК ПРИНЯТ')
+        lines.append('✅ Чек пройдёт все проверки и может быть принят')
 
     return '\n'.join(lines)
 
