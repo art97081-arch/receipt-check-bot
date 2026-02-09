@@ -1,7 +1,6 @@
 import os
 import logging
 import tempfile
-import time
 import requests
 from dotenv import load_dotenv
 from telegram import Update, File
@@ -12,10 +11,9 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 OWNER_TG_ID = int(os.getenv('OWNER_TG_ID', '0'))
-SC_API_KEY = os.getenv('SC_API_KEY')
-SC_USER_ID = os.getenv('SC_USER_ID')
+DATAGRAB_KEY = os.getenv('DATAGRAB_KEY')
 
-if not BOT_TOKEN or not OWNER_TG_ID or not SC_API_KEY or not SC_USER_ID:
+if not BOT_TOKEN or not OWNER_TG_ID or not DATAGRAB_KEY:
     print('Missing required env vars. See .env.example')
     exit(1)
 
@@ -25,82 +23,81 @@ logger = logging.getLogger(__name__)
 # Initialize DB (idempotent)
 init_db(OWNER_TG_ID)
 
-# SafeCheck API base URL
-SAFECHECK_API_BASE = 'https://ru.safecheck.online/api'
 
-def get_safecheck_headers():
-    """Return headers for SafeCheck API authentication."""
-    return {
-        'SC-API-KEY': SC_API_KEY,
-        'SC-USER-ID': SC_USER_ID
-    }
-
-
-def format_safecheck_response(data: dict) -> str:
-    """Return a human-readable Russian summary for SafeCheck API response."""
+def format_datagrab_response(data: dict) -> str:
+    """Return a human-readable Russian summary for DataGrab API response."""
     lines = []
-    
-    # Check for error
-    if data.get('error') == 1:
-        lines.append(f'❌ Ошибка: {data.get("msg", "Неизвестная ошибка")}')
-        return '\n'.join(lines)
-    
-    result = data.get('result', {})
-    
-    # Main verdict
-    color = result.get('color')
-    is_original = result.get('is_original')
-    recommendation = result.get('recommendation')
-    
-    if color == 'white' and is_original:
-        lines.append('✅ ЧЕК ПОДЛИННЫЙ')
-        lines.append(f'💬 Рекомендация: {recommendation}')
-    elif color in ('red', 'black') or not is_original:
-        lines.append('❌ ЧЕК ПОДДЕЛЬНЫЙ')
-        lines.append(f'💬 Рекомендация: {recommendation}')
-    elif color == 'yellow':
-        lines.append('⚠️ ЧЕК ПОДОЗРИТЕЛЬНЫЙ')
-        lines.append(f'💬 Рекомендация: {recommendation}')
-    elif color == 'not_supported':
-        lines.append('❓ БАНК НЕ ПОДДЕРЖИВАЕТСЯ')
+    result = data.get('result')
+
+    # High-level result
+    if result in (None, ''):
+        lines.append('Результат: неизвестен')
     else:
-        lines.append(f'Статус: {color or "неизвестен"}')
-    
-    # Structure check
-    struct_passed = result.get('struct_passed')
-    struct_result = result.get('struct_result')
-    if struct_passed:
-        lines.append(f'✅ Структура PDF: Корректна ({struct_result})')
+        lines.append(f'Результат: {result}')
+
+    # message from API (friendly)
+    if data.get('message'):
+        lines.append(data.get('message'))
+
+    # Flags
+    is_fake = data.get('is_fake')
+    is_mod = data.get('is_mod')
+    is_unrec = data.get('is_unrec')
+    compliance = data.get('compliance_status')
+
+    # Interpret authenticity
+    if is_fake:
+        lines.append('\n❌ Оригинальность: Не подтверждена')
+        lines.append('❌ Чек не является оригиналом — документ был изменен или пересоздан')
+    elif is_unrec:
+        lines.append('\n⚠️ Распознавание: Не удалось распознать чек (unrec)')
     else:
-        lines.append(f'❌ Структура PDF: Нарушена ({struct_result})')
-    
-    # Device error
-    if result.get('device_error'):
-        lines.append('⚠️ Файл был сохранён некорректно (device_error)')
-    
-    # Check data
-    check_data = result.get('check_data', {})
-    if check_data:
+        lines.append('\n✅ Оригинальность: Подтверждена')
+
+    # Structure / compliance
+    if compliance is False:
+        lines.append('❌ Структура PDF: Нарушена')
+    elif compliance is True:
+        lines.append('✅ Структура PDF: Корректна')
+
+    if is_mod:
+        lines.append('⚠️ Чек был пересохранён/сформирован виртуальным принтером (mod) — проверка ограничена')
+
+    # If check_data exists, print main fields
+    check_data = data.get('check_data')
+    if isinstance(check_data, dict):
         lines.append('\n🧾 Данные чека:')
-        if check_data.get('sender_fio'):
-            lines.append(f'  Отправитель: {check_data.get("sender_fio")}')
-        if check_data.get('sender_bank'):
-            lines.append(f'  Банк отправителя: {check_data.get("sender_bank")}')
-        if check_data.get('recipient_fio'):
-            lines.append(f'  Получатель: {check_data.get("recipient_fio")}')
-        if check_data.get('recipient_bank'):
-            lines.append(f'  Банк получателя: {check_data.get("recipient_bank")}')
-        if check_data.get('sum'):
-            lines.append(f'  Сумма: {check_data.get("sum")}')
-        if check_data.get('status'):
-            lines.append(f'  Статус: {check_data.get("status")}')
-        if check_data.get('date'):
-            lines.append(f'  Дата: {check_data.get("date")}')
-    
-    verifier = result.get('verifier')
-    if verifier:
-        lines.append(f'\n🏦 Верификатор: {verifier}')
-    
+        sender = check_data.get('sender_name') or check_data.get('sender') or check_data.get('sender_acc')
+        if sender:
+            lines.append(f'  Отправитель: {sender}')
+        sender_bank = check_data.get('sender_bank') or check_data.get('bank_sender')
+        if sender_bank:
+            lines.append(f'  Банк отправителя: {sender_bank}')
+        remitte = check_data.get('remitte_name') or check_data.get('recipient')
+        if remitte:
+            lines.append(f'  Получатель: {remitte}')
+        remitte_bank = check_data.get('remitte_bank') or check_data.get('bank_recipient')
+        if remitte_bank:
+            lines.append(f'  Банк получателя: {remitte_bank}')
+        amount = check_data.get('amount') or check_data.get('sum') or check_data.get('payment_sum')
+        if amount:
+            lines.append(f'  Сумма: {amount}')
+        status = check_data.get('status') or check_data.get('state')
+        if status:
+            lines.append(f'  Статус: {status}')
+        time = check_data.get('payment_time') or check_data.get('time')
+        if time:
+            lines.append(f'  Дата: {time}')
+
+    # Additional recommendation based on flags
+    lines.append('')
+    if is_fake:
+        lines.append('Чек поддельный — рекомендуется отклонить.')
+    elif is_unrec or (not compliance and compliance is not None):
+        lines.append('Рекомендация: Проверить вручную — частично распознан или структура нарушена.')
+    else:
+        lines.append('Рекомендация: Чек можно принять — все проверки пройдены.')
+
     return '\n'.join(lines)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -174,74 +171,55 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await file.download_to_drive(file_path)
         
         try:
-            # Step 1: Submit file to SafeCheck API
-            headers = get_safecheck_headers()
-            with open(file_path, 'rb') as f:
-                files = {'file': f}
-                response = requests.post(
-                    f'{SAFECHECK_API_BASE}/check',
-                    headers=headers,
-                    files=files,
-                    timeout=60
-                )
+            # Try primary and backup DataGrab servers
+            servers = [
+                f'https://api.datagrab.ru/upload.php?key={DATAGRAB_KEY}&tid={sender_id}',
+                f'https://api2.datagrab.ru/upload.php?key={DATAGRAB_KEY}&tid={sender_id}'
+            ]
             
-            response.raise_for_status()
-            submit_resp = response.json()
+            data = None
+            for idx, url in enumerate(servers):
+                try:
+                    with open(file_path, 'rb') as f:
+                        files = {'file': ('receipt.pdf', f, 'application/pdf')}
+                        resp = requests.post(url, files=files, timeout=60)
+                    resp.raise_for_status()
+                    # Try parsing JSON; if parsing fails, send the raw response back to the user for inspection
+                    try:
+                        data = resp.json()
+                        logger.info(f'Successfully got response from {url}: {data}')
+                        break  # Success, exit loop
+                    except ValueError as ve:
+                        raw_text = resp.text
+                        logger.error(f'Non-JSON response from {url}: {raw_text}')
+                        if idx == len(servers) - 1:  # Last server, send error to user
+                            if len(raw_text) > 3900:
+                                raw_text = raw_text[:3900] + '\n... (truncated)'
+                            await update.message.reply_text(f'DataGrab вернул не-JSON ответ:\n<pre>{raw_text}</pre>', parse_mode='HTML')
+                            return
+                except Exception as e:
+                    logger.warning(f'Error during request to {url}: {e}')
+                    if idx == len(servers) - 1:  # Last server, send error to user
+                        await update.message.reply_text(f'Ошибка при отправке на проверку: {e}')
+                        return
             
-            if submit_resp.get('error') == 1:
-                error_msg = submit_resp.get('msg', 'Unknown error')
-                await update.message.reply_text(f'❌ Ошибка при отправке чека: {error_msg}')
+            if data is None:
+                await update.message.reply_text('Не удалось получить ответ от DataGrab после попыток обоих серверов.')
                 return
             
-            file_id = submit_resp['result']['file_id']
-            logger.info(f'File submitted with ID: {file_id}')
-            
-            # Step 2: Poll for check result (with retries)
-            max_retries = 30
-            retry_delay = 2  # seconds
-            check_result = None
-            
-            for attempt in range(max_retries):
-                time.sleep(retry_delay)
-                
-                response = requests.get(
-                    f'{SAFECHECK_API_BASE}/getCheck?file_id={file_id}',
-                    headers=headers,
-                    timeout=60
-                )
-                response.raise_for_status()
-                check_result = response.json()
-                
-                if check_result.get('error') == 1:
-                    # Permanent error
-                    error_msg = check_result.get('msg', 'Unknown error')
-                    await update.message.reply_text(f'❌ Ошибка при получении результата: {error_msg}')
-                    return
-                
-                status = check_result['result'].get('status')
-                if status == 'completed':
-                    logger.info(f'Check completed for file_id: {file_id}')
-                    break
-                else:
-                    logger.info(f'Check status: {status}, attempt {attempt + 1}/{max_retries}')
-            
-            if check_result is None or check_result['result'].get('status') != 'completed':
-                await update.message.reply_text('⏱️ Проверка заняла слишком много времени. Попробуйте позже.')
-                return
-            
-            # Step 3: Format and send result
-            summary = format_safecheck_response(check_result)
+            # Format a human-friendly summary and send + raw JSON
+            summary = format_datagrab_response(data)
             await update.message.reply_text(summary)
-            
-            # Send raw JSON for reference
+
+            # send raw JSON (trim if large)
             import json
-            raw = json.dumps(check_result, ensure_ascii=False, indent=2)
+            raw = json.dumps(data, ensure_ascii=False, indent=2)
             if len(raw) > 3900:
                 raw = raw[:3900] + '\n... (truncated)'
             await update.message.reply_text(f'Полный ответ:\n<pre>{raw}</pre>', parse_mode='HTML')
         
         except Exception as e:
-            logger.exception('Error during SafeCheck API request')
+            logger.exception('Error during DataGrab API request')
             await update.message.reply_text(f'❌ Ошибка при проверке чека: {str(e)}')
         
         finally:
