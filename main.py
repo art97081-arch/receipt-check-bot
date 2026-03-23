@@ -114,25 +114,45 @@ def build_datagrab_report(data: dict, *, sender_id: int, file_name: str) -> dict
             'fake_check',
             'Признак подделки',
             'FAIL' if is_fake else 'OK',
-            'Чек помечен как поддельный' if is_fake else 'Подделка не обнаружена',
+            (
+                'DataGrab вернул is_fake=true, поэтому чек помечен как поддельный'
+                if is_fake else
+                'DataGrab вернул is_fake=false, отдельный признак подделки не обнаружен'
+            ),
         ),
         build_check_line(
             'modified_check',
             'Признак пересохранения',
             '50/50' if is_mod else 'OK',
-            'Документ был пересохранён или сформирован виртуальным принтером' if is_mod else 'Следов пересохранения не найдено',
+            (
+                'DataGrab вернул is_mod=true: документ был пересохранён или сформирован виртуальным принтером'
+                if is_mod else
+                'DataGrab вернул is_mod=false: следов пересохранения не найдено'
+            ),
         ),
         build_check_line(
             'recognition_check',
             'Распознавание документа',
             '50/50' if is_unrec else 'OK',
-            'Система не распознала тип документа' if is_unrec else 'Документ распознан',
+            (
+                'DataGrab вернул is_unrec=true: тип документа не распознан'
+                if is_unrec else
+                'DataGrab вернул is_unrec=false: документ распознан'
+            ),
         ),
         build_check_line(
             'pdf_structure_check',
             'Структура PDF',
             'OK' if compliance is True else ('FAIL' if compliance is False and is_fake else '50/50' if compliance is False else 'INFO'),
-            'Структура PDF корректна' if compliance is True else (f'Структура PDF нарушена: {struct_result or "без деталей"}' if compliance is False else 'DataGrab не вернул статус структуры PDF'),
+            (
+                'DataGrab вернул compliance_status=true: структура PDF корректна'
+                if compliance is True else
+                (
+                    f'DataGrab вернул compliance_status=false: структура PDF нарушена; struct_result={struct_result or "null"}'
+                    if compliance is False else
+                    'DataGrab не вернул статус структуры PDF'
+                )
+            ),
         ),
     ]
 
@@ -150,6 +170,13 @@ def build_datagrab_report(data: dict, *, sender_id: int, file_name: str) -> dict
         verdict = 'PASS'
         verdict_label = 'Чек выглядит оригинальным'
 
+    if verdict == 'FAIL':
+        verdict_reason = 'Вердикт FAIL построен по полям DataGrab, прежде всего is_fake=true и/или compliance_status=false.'
+    elif verdict == 'REVIEW':
+        verdict_reason = 'Вердикт REVIEW построен по полям DataGrab: найден спорный сигнал вроде is_mod=true, is_unrec=true или compliance_status=false.'
+    else:
+        verdict_reason = 'Вердикт PASS построен по полям DataGrab: критичных негативных сигналов в ответе API нет.'
+
     return {
         'summary': {
             'verdict': verdict,
@@ -159,6 +186,8 @@ def build_datagrab_report(data: dict, *, sender_id: int, file_name: str) -> dict
                 'FAIL': fail_count,
                 '50/50': warn_count,
             },
+            'verdict_reason': verdict_reason,
+            'decision_source': 'Вердикт сформирован локальной логикой бота на основе полей ответа DataGrab API.',
         },
         'context': {
             'sender_tg_id': sender_id,
@@ -179,6 +208,23 @@ def build_datagrab_report(data: dict, *, sender_id: int, file_name: str) -> dict
         'checks': checks,
         'check_data': check_data,
         'raw_api_response': data,
+        'explanation': {
+            'how_it_works': 'Бот не анализирует PDF самостоятельно. Он отправляет файл в DataGrab API и строит объяснение по полям ответа API.',
+            'limitations': [
+                'Если DataGrab не прислал подробное поле причины, бот не может восстановить внутреннюю механику проверки.',
+                'Если struct_result=null, бот знает только факт нарушения структуры PDF, но не знает точный технический дефект.',
+                'Если is_fake=true без расшифровки, бот знает итоговый флаг подделки, но не знает, какой именно внутренний эвристический сигнал его вызвал.',
+            ],
+            'important_fields': {
+                'is_fake': data.get('is_fake'),
+                'is_mod': data.get('is_mod'),
+                'is_unrec': data.get('is_unrec'),
+                'compliance_status': data.get('compliance_status'),
+                'struct_result': data.get('struct_result'),
+                'message': data.get('message'),
+                'result': data.get('result'),
+            },
+        },
     }
 
 
@@ -512,6 +558,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f'FAIL {report["summary"]["counts"]["FAIL"]} | '
             f'50/50 {report["summary"]["counts"]["50/50"]}\n'
             f'🧠 Итог: {report["summary"]["verdict_label"]}\n'
+            f'📌 Основание: {report["summary"]["verdict_reason"]}\n'
+            '🔬 Метод: бот не проверяет PDF сам, а объясняет ответ DataGrab API.\n'
             'Нажмите кнопку ниже, чтобы открыть полный JSON отчёт.'
         )
         cache_key = remember_json_report(context, report)
