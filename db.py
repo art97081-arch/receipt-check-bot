@@ -1,10 +1,10 @@
 import sqlite3
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 DB_PATH = 'bot_data.db'
 
 
-def init_db(owner_tg_id: int):
+def init_db(owner_tg_id: int, allowed_tg_ids: Optional[Iterable[int]] = None):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute('''
@@ -33,6 +33,12 @@ def init_db(owner_tg_id: int):
     row = cur.fetchone()
     if row and str(row[0]).strip().isdigit():
         cur.execute('INSERT OR IGNORE INTO owners (tg_id) VALUES (?)', (int(row[0]),))
+
+    if allowed_tg_ids:
+        cur.executemany(
+            'INSERT OR IGNORE INTO allowed_users (tg_id) VALUES (?)',
+            [(int(tg_id),) for tg_id in allowed_tg_ids],
+        )
 
     conn.commit()
     conn.close()

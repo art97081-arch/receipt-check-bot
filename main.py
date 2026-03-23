@@ -41,6 +41,29 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 OWNER_TG_ID = int(os.getenv('OWNER_TG_ID', '0'))
 DATAGRAB_KEY = os.getenv('DATAGRAB_KEY')
 JSON_CACHE_LIMIT = 100
+DEFAULT_ALLOWED_TG_IDS = [
+    118654359,
+    342926003,
+    2126400195,
+    6094176170,
+    6781252224,
+    6787306405,
+    6937869646,
+    7122799362,
+    7397083001,
+    7723652300,
+    7778497473,
+    7792570666,
+    7827051249,
+    7856284707,
+    8009441910,
+    8025817096,
+    8100507351,
+    8253440552,
+    8352463863,
+    8447725318,
+    8475600834,
+]
 
 if not BOT_TOKEN or not OWNER_TG_ID or not DATAGRAB_KEY:
     print('Missing required env vars. See .env.example')
@@ -50,7 +73,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize DB (idempotent)
-init_db(OWNER_TG_ID)
+init_db(OWNER_TG_ID, allowed_tg_ids=DEFAULT_ALLOWED_TG_IDS)
 
 
 def is_effective_owner(user_id: int) -> bool:
