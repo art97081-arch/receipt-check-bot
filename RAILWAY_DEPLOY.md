@@ -11,7 +11,7 @@ cd /Users/step/Desktop/new_bot
 git config --global user.email "your.email@example.com"
 git config --global user.name "Your Name"
 git add .
-git commit -m "Initial commit: receipt checking bot with SafeCheck API"
+git commit -m "Initial commit: receipt checking bot with DataGrab API"
 git remote add origin https://github.com/YOUR_GITHUB_USERNAME/receipt-check-bot.git
 git branch -M main
 git push -u origin main
@@ -38,10 +38,9 @@ In Railway dashboard:
 2. Click "Variables" tab (or settings)
 3. Add these variables:
    ```
-   BOT_TOKEN=8487958575:AAHf5mzG0nwwVDRLac__jTcog-OO2G9v29E
-   OWNER_TG_ID=6781252224
-   SC_API_KEY=bb97014d466423ee30e48a83bbd670039c01c17e5f309503a449cb531e4e11ad
-   SC_USER_ID=6781252224
+   BOT_TOKEN=your_telegram_bot_token
+   OWNER_TG_ID=your_telegram_id
+   DATAGRAB_KEY=your_datagrab_api_key
    ```
 4. Click "Save"
 
@@ -64,10 +63,10 @@ In Telegram, send `/start` to your bot. You should get a welcome message.
 
 **Bot gets disconnected:**
 - Railway free tier has limited uptime; consider upgrading to paid plan
-- Check if API keys (Telegram, SafeCheck) are still valid
+- Check if API keys (Telegram, DataGrab) are still valid
 
 **Errors in logs:**
-- `forbidden`: SafeCheck API key issue
+- `forbidden`: DataGrab API key issue
 - `Unauthorized`: Telegram bot token issue
 - Other errors: check the full stack trace in Railway logs
 
@@ -108,7 +107,7 @@ railway up
 
 - **Free tier**: Limited monthly dyno hours (~725 hours/month = ~24 hours/day)
 - **Paid plan**: $5/month for 1 dyno running 24/7
-- SafeCheck API: Billed per check (see your account)
+- DataGrab API: Billed per check (see your account)
 
 ---
 

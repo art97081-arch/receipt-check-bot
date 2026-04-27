@@ -1,10 +1,10 @@
-# Receipt-check Bot (SafeCheck integration)
+# Receipt-check Bot (DataGrab integration)
 
-This Telegram bot accepts PDF receipts and checks them using the SafeCheck API (https://ru.safecheck.online).
+This Telegram bot accepts PDF receipts and checks them using the DataGrab API.
 
 Features
 - Owner (by Telegram ID) can add allowed users with `/allow <tg_id>` and remove with `/disallow <tg_id>`.
-- Allowed users can upload PDF receipts (as file) to the bot; the bot sends them to SafeCheck and returns the JSON result.
+- Allowed users can upload PDF receipts (as file) to the bot; the bot sends them to DataGrab and returns the JSON result.
 
 ## Local Setup
 
@@ -13,8 +13,7 @@ Features
 ```
 BOT_TOKEN=your_telegram_bot_token
 OWNER_TG_ID=your_telegram_id
-SC_API_KEY=your_safecheck_api_key
-SC_USER_ID=your_safecheck_user_id
+DATAGRAB_KEY=your_datagrab_api_key
 ```
 
 2. Create and activate a Python environment (macOS zsh):
@@ -61,8 +60,7 @@ python main.py
    - Add:
      - `BOT_TOKEN` = your bot token
      - `OWNER_TG_ID` = your TG ID
-     - `SC_API_KEY` = your SafeCheck API key
-     - `SC_USER_ID` = your SafeCheck user ID
+     - `DATAGRAB_KEY` = your DataGrab API key
    - Click "Save"
 
 4. **Start the bot:**
@@ -74,10 +72,9 @@ python main.py
 - Owner runs `/allow 123456` to grant access to a user.
 - Owner runs `/disallow 123456` to revoke access.
 - Owner runs `/list` to see all allowed users.
-- Allowed user sends a PDF (as document). The bot posts it to SafeCheck and replies with the parsed result.
+- Allowed user sends a PDF (as document). The bot posts it to DataGrab and replies with the parsed result.
 
 ## Notes
 - Do NOT commit your `.env` with real tokens.
-- SafeCheck polling timeout: ~60 seconds per check.
+- DataGrab request timeout: ~60 seconds per check.
 - Railway free tier has monthly dyno hours; use a paid plan for 24/7 uptime.
-

@@ -606,8 +606,13 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('Неизвестная команда или сообщение. Отправьте PDF файл.')
 
 
+async def clear_webhook_on_startup(app):
+    await app.bot.delete_webhook(drop_pending_updates=False)
+    logger.info('Telegram webhook cleared before polling startup')
+
+
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(clear_webhook_on_startup).build()
 
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('allow', allow_cmd))
