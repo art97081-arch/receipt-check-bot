@@ -70,6 +70,8 @@ if not BOT_TOKEN or not OWNER_TG_ID or not DATAGRAB_KEY:
     raise SystemExit(1)
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Initialize DB (idempotent)
@@ -120,6 +122,10 @@ def build_check_line(code: str, label: str, status: str, details: str) -> dict:
         'status': status,
         'details': details,
     }
+
+
+def datagrab_host(url: str) -> str:
+    return 'api2.datagrab.ru' if 'api2.datagrab.ru' in url else 'api.datagrab.ru'
 
 
 def build_datagrab_report(data: dict, *, sender_id: int, file_name: str) -> dict:
@@ -546,11 +552,18 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 resp.raise_for_status()
                 try:
                     data = resp.json()
-                    logger.info('Successfully got response from %s: %s', url, data)
+                    logger.info(
+                        'DataGrab response received from %s: result=%s is_fake=%s is_mod=%s is_unrec=%s',
+                        datagrab_host(url),
+                        data.get('result') if isinstance(data, dict) else None,
+                        data.get('is_fake') if isinstance(data, dict) else None,
+                        data.get('is_mod') if isinstance(data, dict) else None,
+                        data.get('is_unrec') if isinstance(data, dict) else None,
+                    )
                     break
                 except ValueError:
                     raw_text = resp.text
-                    logger.error('Non-JSON response from %s: %s', url, raw_text)
+                    logger.error('Non-JSON response from %s: status=%s', datagrab_host(url), resp.status_code)
                     if idx == len(servers) - 1:
                         if len(raw_text) > 3900:
                             raw_text = raw_text[:3900] + '\n... (truncated)'
@@ -560,7 +573,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
                         return
             except Exception as exc:
-                logger.warning('Error during request to %s: %s', url, exc)
+                logger.warning('Error during request to %s: %s', datagrab_host(url), exc)
                 if idx == len(servers) - 1:
                     await update.message.reply_text(f'Ошибка при отправке на проверку: {exc}')
                     return
