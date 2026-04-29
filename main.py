@@ -3,6 +3,7 @@ import html
 import json
 import logging
 import os
+import re
 import tempfile
 import uuid
 
@@ -41,6 +42,10 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 OWNER_TG_ID = int(os.getenv('OWNER_TG_ID', '0'))
 DATAGRAB_KEY = os.getenv('DATAGRAB_KEY')
 JSON_CACHE_LIMIT = 100
+DATAGRAB_UPLOAD_URLS = (
+    'https://api.datagrab.ru/upload.php',
+    'https://api2.datagrab.ru/upload.php',
+)
 DEFAULT_ALLOWED_TG_IDS = [
     118654359,
     342926003,
@@ -126,6 +131,23 @@ def build_check_line(code: str, label: str, status: str, details: str) -> dict:
 
 def datagrab_host(url: str) -> str:
     return 'api2.datagrab.ru' if 'api2.datagrab.ru' in url else 'api.datagrab.ru'
+
+
+def sanitize_datagrab_error(value: object) -> str:
+    return re.sub(r'([?&]key=)[^&\s]+', r'\1***', str(value))
+
+
+def trim_response_text(text: str, limit: int = 1200) -> str:
+    text = (text or '').strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit] + '\n... (truncated)'
+
+
+def is_pdf_document(doc) -> bool:
+    file_name = (doc.file_name or '').lower()
+    mime_type = (doc.mime_type or '').lower()
+    return mime_type == 'application/pdf' or file_name.endswith('.pdf')
 
 
 def build_datagrab_report(data: dict, *, sender_id: int, file_name: str) -> dict:
@@ -529,6 +551,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not doc:
         await update.message.reply_text('Пожалуйста, отправьте PDF файл как документ.')
         return
+    if not is_pdf_document(doc):
+        await update.message.reply_text('Пожалуйста, отправьте именно PDF файл как документ.')
+        return
 
     await update.message.reply_text('Получаю файл и отправляю на проверку...')
     file: File = await context.bot.get_file(doc.file_id)
@@ -538,18 +563,31 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await file.download_to_drive(file_path)
 
     try:
-        servers = [
-            f'https://api.datagrab.ru/upload.php?key={DATAGRAB_KEY}&tid={sender_id}',
-            f'https://api2.datagrab.ru/upload.php?key={DATAGRAB_KEY}&tid={sender_id}',
-        ]
-
         data = None
-        for idx, url in enumerate(servers):
+        errors = []
+        for url in DATAGRAB_UPLOAD_URLS:
+            host = datagrab_host(url)
             try:
                 with open(file_path, 'rb') as f:
-                    files = {'file': ('receipt.pdf', f, 'application/pdf')}
-                    resp = requests.post(url, files=files, timeout=60, verify=False)
-                resp.raise_for_status()
+                    file_name = doc.file_name or 'receipt.pdf'
+                    files = {'file': (file_name, f, 'application/pdf')}
+                    resp = requests.post(
+                        url,
+                        params={'key': DATAGRAB_KEY, 'tid': sender_id},
+                        files=files,
+                        timeout=(10, 90),
+                        verify=False,
+                    )
+                if resp.status_code >= 400:
+                    raw_text = trim_response_text(resp.text)
+                    errors.append(f'{host}: HTTP {resp.status_code}')
+                    logger.warning(
+                        'DataGrab HTTP error from %s: status=%s body=%r',
+                        host,
+                        resp.status_code,
+                        raw_text,
+                    )
+                    continue
                 try:
                     data = resp.json()
                     logger.info(
@@ -562,24 +600,23 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     break
                 except ValueError:
-                    raw_text = resp.text
-                    logger.error('Non-JSON response from %s: status=%s', datagrab_host(url), resp.status_code)
-                    if idx == len(servers) - 1:
-                        if len(raw_text) > 3900:
-                            raw_text = raw_text[:3900] + '\n... (truncated)'
-                        await update.message.reply_text(
-                            f'DataGrab вернул не-JSON ответ:\n<pre>{html.escape(raw_text)}</pre>',
-                            parse_mode='HTML',
-                        )
-                        return
+                    raw_text = trim_response_text(resp.text, limit=3900)
+                    errors.append(f'{host}: не-JSON ответ')
+                    logger.error('Non-JSON response from %s: status=%s body=%r', host, resp.status_code, raw_text)
             except Exception as exc:
-                logger.warning('Error during request to %s: %s', datagrab_host(url), exc)
-                if idx == len(servers) - 1:
-                    await update.message.reply_text(f'Ошибка при отправке на проверку: {exc}')
-                    return
+                safe_exc = sanitize_datagrab_error(exc)
+                errors.append(f'{host}: {safe_exc}')
+                logger.warning('Error during request to %s: %s', host, safe_exc)
 
         if data is None:
-            await update.message.reply_text('Не удалось получить ответ от DataGrab после попыток обоих серверов.')
+            details = '\n'.join(f'• {html.escape(error)}' for error in errors) or '• нет деталей'
+            await update.message.reply_text(
+                'DataGrab не принял файл после попыток обоих серверов.\n'
+                'Если в деталях HTTP 500, это внутренняя ошибка сервиса DataGrab или конкретного файла на их стороне; '
+                'попробуйте отправить чек ещё раз позже или другим PDF.\n\n'
+                f'Детали:\n{details}',
+                parse_mode='HTML',
+            )
             return
 
         report = build_datagrab_report(
