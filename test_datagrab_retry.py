@@ -105,8 +105,16 @@ class DataGrabRetryTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn('api2.datagrab.ru', self.main.DATAGRAB_UPLOAD_URL)
 
-    def test_recovered_user_is_in_default_allowlist(self):
-        self.assertIn(8263217831, self.main.DEFAULT_ALLOWED_TG_IDS)
+    def test_recovered_users_are_in_default_allowlist(self):
+        recovered_ids = {
+            323718363,
+            5776653864,
+            7294257076,
+            8222080507,
+            8263217831,
+            8502478461,
+        }
+        self.assertTrue(recovered_ids.issubset(self.main.DEFAULT_ALLOWED_TG_IDS))
 
     def test_railway_volume_path_is_used_for_database(self):
         self.assertEqual(
