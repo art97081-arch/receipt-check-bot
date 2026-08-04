@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import requests
 
+import db
+
 
 class DataGrabRetryTests(unittest.IsolatedAsyncioTestCase):
     @classmethod
@@ -102,6 +104,15 @@ class DataGrabRetryTests(unittest.IsolatedAsyncioTestCase):
             'https://api.datagrab.ru/upload.php',
         )
         self.assertNotIn('api2.datagrab.ru', self.main.DATAGRAB_UPLOAD_URL)
+
+    def test_recovered_user_is_in_default_allowlist(self):
+        self.assertIn(8263217831, self.main.DEFAULT_ALLOWED_TG_IDS)
+
+    def test_railway_volume_path_is_used_for_database(self):
+        self.assertEqual(
+            db.resolve_db_path('/data'),
+            '/data/bot_data.db',
+        )
 
 
 if __name__ == '__main__':

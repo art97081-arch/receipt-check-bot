@@ -1,10 +1,21 @@
+import os
 import sqlite3
 from typing import Iterable, List, Optional
 
-DB_PATH = 'bot_data.db'
+
+def resolve_db_path(volume_mount_path: Optional[str] = None) -> str:
+    if volume_mount_path:
+        return os.path.join(volume_mount_path, 'bot_data.db')
+    return 'bot_data.db'
+
+
+DB_PATH = resolve_db_path(os.getenv('RAILWAY_VOLUME_MOUNT_PATH'))
 
 
 def init_db(owner_tg_id: int, allowed_tg_ids: Optional[Iterable[int]] = None):
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute('''
