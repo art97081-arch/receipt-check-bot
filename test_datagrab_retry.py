@@ -113,6 +113,9 @@ class DataGrabRetryTests(unittest.IsolatedAsyncioTestCase):
             8222080507,
             8263217831,
             8502478461,
+            8523042046,
+            8652281808,
+            8739821641,
         }
         self.assertTrue(recovered_ids.issubset(self.main.DEFAULT_ALLOWED_TG_IDS))
 
