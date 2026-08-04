@@ -110,6 +110,8 @@ class DataGrabRetryTests(unittest.IsolatedAsyncioTestCase):
             323718363,
             5776653864,
             7294257076,
+            7742183836,
+            7855040364,
             8222080507,
             8263217831,
             8502478461,
